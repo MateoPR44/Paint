@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TRON Drawing Synthesizer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono:wght@400&display=swap');
+        
+        body {
+            margin: 0;
+            padding: 0;
+            background: #001100;
+            overflow: hidden;
+            font-family: 'Share Tech Mono', 'Courier New', monospace;
+            color: #00ff41;
+            cursor: crosshair;
+        }
+        
+        .ui-overlay {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            z-index: 1000;
+            background: rgba(0, 0, 0, 0.9);
+            border: 2px solid #00ff41;
+            border-radius: 0;
+            padding: 12px;
+            box-shadow: inset 0 0 10px rgba(0, 255, 65, 0.3);
+            font-size: 11px;
+            letter-spacing: 1px;
+        }
+        
+        .ui-overlay::before {
+            content: "SYSTEM STATUS: ONLINE";
+            display: block;
+            color: #00ff41;
+            font-size: 10px;
+            margin-bottom: 10px;
+            text-align: center;
+            border-bottom: 1px solid #00ff41;
+            padding-bottom: 5px;
+            animation: blink 2s infinite;
+        }
+        
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.3; }
+        }
+        
+        @keyframes scanlines {
+            0% { transform: translateY(-100%); }
+            100% { transform: translateY(100vh); }
+        }
+        
+        .control {
+            margin: 8px 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            position: relative;
+        }
+        
+        .control::before {
+            content: ">";
+            color: #00ff41;
+            font-weight: bold;
+        }
+        
+        .control label {
+            min-width: 70px;
+            font-size: 10px;
+            text-transform: uppercase;
+            color: #00ff41;
+            letter-spacing: 1px;
+        }
+        
+        .control input, .control select {
+            background: #000000;
+            border: 1px solid #00ff41;
+            color: #00ff41;
+            padding: 3px 6px;
+            border-radius: 0;
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 10px;
+            outline: none;
+        }
+        
+        .control input:focus, .control select:focus {
+            box-shadow: 0 0 8px #00ff41;
+        }
+        
+        .start-button {
+            background: #000000;
+            border: 2px solid #00ff41;
+            color: #00ff41;
+            padding: 8px 16px;
+            border-radius: 0;
+            cursor: pointer;
+            font-family: 'Share Tech Mono', monospace;
+            text-transform: uppercase;
+            transition: all 0.2s ease;
+            margin-top: 10px;
+            font-size: 11px;
+            letter-spacing: 1px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .start-button::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(0, 255, 65, 0.2), transparent);
+            transition: left 0.5s;
+        }
+        
+        .start-button:hover::before {
+            left: 100%;
+        }
+        
+        .start-button:hover {
+            background: rgba(0, 255, 65, 0.1);
+            box-shadow: 0 0 15px #00ff41;
+        }
+        
+        .instructions {
+            position: absolute;
+            bottom: 15px;
+            left: 15px;
+            font-size: 10px;
+            color: #00ff41;
+            max-width: 280px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px;
+            border: 1px solid #00ff41;
+            letter-spacing: 0.5px;
+            line-height: 1.4;
+        }
+        
+        .instructions::before {
+            content: "MANUAL DE OPERACIÓN";
+            display: block;
+            font-weight: bold;
+            margin-bottom: 8px;
+            text-align: center;
+            border-bottom: 1px solid #00ff41;
+            padding-bottom: 4px;
+        }
+        
+        #defaultCanvas0 {
+            image-rendering: pixelated;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: crisp-edges;
+        }
+        
+        /* Efecto de líneas de escaneo */
+        body::after {
+            content: "";
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #00ff41, transparent);
+            animation: scanlines 3s linear infinite;
+            opacity: 0.3;
+            z-index: 1001;
+        }
+        
+        /* Efecto CRT */
+        body::before {
+            content: "";
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                repeating-linear-gradient(
+                    0deg,
+                    transparent,
+                    transparent 2px,
+                    rgba(0, 255, 65, 0.03) 2px,
+                    rgba(0, 255, 65, 0.03) 4px
+                );
+            pointer-events: none;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <div class="ui-overlay">
+        <div class="control">
+            <label>Escala:</label>
+            <select id="scaleSelect">
+                <option value="pentatonic">Pentatónica</option>
+                <option value="major">Mayor</option>
+                <option value="minor">Menor</option>
+                <option value="dorian">Dórica</option>
+                <option value="mixolydian">Mixolidia</option>
+                <option value="chromatic">Cromática</option>
+            </select>
+        </div>
+        
+        <div class="control">
+            <label>Reverb:</label>
+            <input type="range" id="reverbSlider" min="0" max="1" step="0.1" value="0.3">
+        </div>
+        
+        <div class="control">
+            <label>Distorsión:</label>
+            <input type="range" id="distortionSlider" min="0" max="1" step="0.1" value="0.2">
+        </div>
+        
+        <div class="control">
+            <label>Filtro:</label>
+            <input type="range" id="filterSlider" min="200" max="5000" step="100" value="2000">
+        </div>
+        
+        <div class="control">
+            <label>Armonías:</label>
+            <input type="range" id="harmonySlider" min="0" max="1" step="0.1" value="0.5">
+        </div>
+        
+        <button class="start-button" id="startButton">INICIALIZAR AUDIO</button>
+    </div>
+    
+    <div class="instructions">
+        <strong>CONTROLES TRON:</strong><br>
+        • Dibuja con el mouse para crear sonidos<br>
+        • La posición Y controla el tono<br>
+        • Movimientos rápidos: Arpegios automáticos<br>
+        • TECLA 'C': Limpiar terminal<br>
+        • Sistema compatible: DOS 6.22
+        • Click para efectos especiales<br>
+        • Diferentes colores = diferentes instrumentos
+    </div>
+
+    <script>
+        let synth, synth2, synth3;
+        let reverb, distortion, chorus;
+        let audioStarted = false;
+        let trails = [];
+        let particles = [];
+        let gridSize = 50;
+        let time = 0;
+        
+        // Escalas musicales más armoniosas
+        const scales = {
+            pentatonic: [261.63, 293.66, 329.63, 392.00, 440.00, 523.25], // C pentatónica + octava
+            major: [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88, 523.25], // C mayor + octava
+            minor: [261.63, 293.66, 311.13, 349.23, 392.00, 415.30, 466.16, 523.25], // A menor + octava
+            chromatic: [261.63, 277.18, 293.66, 311.13, 329.63, 349.23, 369.99, 392.00, 415.30, 440.00, 466.16, 493.88],
+            dorian: [261.63, 293.66, 311.13, 349.23, 392.00, 440.00, 466.16, 523.25], // Modo dórico
+            mixolydian: [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 466.16, 523.25] // Modo mixolidio
+        };
+        
+        let currentScale = scales.pentatonic;
+        let lastNote = 0;
+        let isDrawing = false;
+        let lastMouseX = 0, lastMouseY = 0;
+        let harmonicNotes = []; // Para almacenar notas que suenan juntas
+        let baseNote = 0; // Nota fundamental
+        
+        function setup() {
+            createCanvas(windowWidth, windowHeight);
+            colorMode(HSB, 360, 100, 100, 100);
+            
+            setupAudio();
+            setupUI();
+        }
+        
+        function setupAudio() {
+            // Crear efectos más suaves y musicales
+            reverb = new Tone.Reverb({
+                decay: 3,
+                wet: 0.5
+            }).toDestination();
+            
+            distortion = new Tone.Distortion({
+                distortion: 0.1, // Reducir distorsión para sonido más limpio
+                oversample: "4x"
+            });
+            
+            chorus = new Tone.Chorus({
+                frequency: 1.5,
+                delayTime: 3.5,
+                depth: 0.4, // Menos profundidad para más claridad
+                wet: 0.3
+            });
+            
+            // Filtro suave
+            const filter = new Tone.Filter({
+                frequency: 3000,
+                type: "lowpass",
+                rolloff: -12 // Rolloff más suave
+            });
+            
+            // Delay más sutil
+            const delay = new Tone.PingPongDelay({
+                delayTime: "8n",
+                feedback: 0.2, // Menos feedback
+                wet: 0.1
+            });
+            
+            // Compressor para uniformidad de volumen
+            const compressor = new Tone.Compressor({
+                threshold: -18,
+                ratio: 3,
+                attack: 0.003,
+                release: 0.1
+            });
+            
+            // Conectar efectos en cadena con compressor
+            distortion.connect(filter);
+            filter.connect(chorus);
+            chorus.connect(delay);
+            delay.connect(compressor);
+            compressor.connect(reverb);
+            
+            // Sintetizador principal más suave
+            synth = new Tone.PolySynth(Tone.Synth, {
+                oscillator: {
+                    type: "triangle" // Onda más suave
+                },
+                envelope: {
+                    attack: 0.1,
+                    decay: 0.3,
+                    sustain: 0.6,
+                    release: 1.0
+                }
+            }).connect(distortion);
+            
+            // Sintetizador de pads armónicos
+            synth2 = new Tone.PolySynth(Tone.FMSynth, {
+                harmonicity: 1.5, // Más armónico
+                modulationIndex: 2, // Menos agresivo
+                oscillator: {
+                    type: "sine"
+                },
+                modulation: {
+                    type: "sine"
+                },
+                envelope: {
+                    attack: 0.2,
+                    decay: 0.1,
+                    sustain: 0.8,
+                    release: 2.0
+                },
+                modulationEnvelope: {
+                    attack: 0.1,
+                    decay: 0.1,
+                    sustain: 0.2,
+                    release: 1.5
+                }
+            }).connect(filter);
+            
+            // Bass suave
+            synth3 = new Tone.Synth({
+                oscillator: {
+                    type: "sine" // Bass más suave
+                },
+                envelope: {
+                    attack: 0.05,
+                    decay: 0.2,
+                    sustain: 0.4,
+                    release: 0.8
+                }
+            }).connect(chorus);
+        }
+        
+        function setupUI() {
+            document.getElementById('startButton').addEventListener('click', async () => {
+                if (!audioStarted) {
+                    await Tone.start();
+                    audioStarted = true;
+                    document.getElementById('startButton').textContent = 'AUDIO ACTIVADO';
+                    document.getElementById('startButton').style.background = 'rgba(0, 255, 0, 0.2)';
+                    document.getElementById('startButton').style.borderColor = '#00ff00';
+                }
+            });
+            
+            document.getElementById('scaleSelect').addEventListener('change', (e) => {
+                currentScale = scales[e.target.value];
+            });
+            
+            document.getElementById('reverbSlider').addEventListener('input', (e) => {
+                if (reverb) reverb.wet.value = parseFloat(e.target.value);
+            });
+            
+            document.getElementById('distortionSlider').addEventListener('input', (e) => {
+                if (distortion) distortion.distortion = parseFloat(e.target.value);
+            });
+            
+            document.getElementById('filterSlider').addEventListener('input', (e) => {
+                const freq = parseFloat(e.target.value);
+                // Controlar filtro principal
+            });
+            
+            document.getElementById('harmonySlider').addEventListener('input', (e) => {
+                // Controlar nivel de armonías
+                window.harmonyLevel = parseFloat(e.target.value);
+            });
+        }
+        
+        function draw() {
+            // Fondo negro de terminal con ligero tinte verde
+            background(120, 20, 8, 25); // Verde muy oscuro con transparencia para efecto trail
+            
+            drawTronGrid();
+            
+            time += 0.015; // Más lento para efecto retro
+            
+            // Actualizar y dibujar trails
+            updateTrails();
+            drawTrails();
+            
+            // Actualizar partículas
+            updateParticles();
+            drawParticles();
+            
+            // Efectos ambientales de computadora vieja
+            drawRetroEffects();
+            
+            // Cursor parpadeante cuando no se dibuja
+            if (!isDrawing && frameCount % 60 < 30) {
+                stroke(120, 100, 100);
+                strokeWeight(2);
+                line(mouseX - 5, mouseY, mouseX + 5, mouseY);
+                line(mouseX, mouseY - 5, mouseX, mouseY + 5);
+            }
+        }
+        
+        function drawTronGrid() {
+            stroke(0, 100, 20, 40); // Verde terminal más sutil
+            strokeWeight(1);
+            
+            // Grid ASCII-style más grueso
+            let gridSpacing = 40;
+            
+            // Grid vertical con efecto de parpadeo
+            for (let x = 0; x < width; x += gridSpacing) {
+                let flicker = random() > 0.95 ? 0 : 1;
+                let alpha = 20 + 15 * sin(time + x * 0.008) * flicker;
+                stroke(120, 70, 30, alpha);
+                line(x, 0, x, height);
+                
+                // Líneas más gruesas cada 4
+                if (x % (gridSpacing * 4) === 0) {
+                    strokeWeight(2);
+                    stroke(120, 80, 50, alpha * 1.5);
+                    line(x, 0, x, height);
+                    strokeWeight(1);
+                }
+            }
+            
+            // Grid horizontal con caracteres ASCII ocasionales
+            for (let y = 0; y < height; y += gridSpacing) {
+                let flicker = random() > 0.95 ? 0 : 1;
+                let alpha = 20 + 15 * sin(time + y * 0.008) * flicker;
+                stroke(120, 70, 30, alpha);
+                line(0, y, width, y);
+                
+                // Líneas más gruesas cada 4
+                if (y % (gridSpacing * 4) === 0) {
+                    strokeWeight(2);
+                    stroke(120, 80, 50, alpha * 1.5);
+                    line(0, y, width, y);
+                    strokeWeight(1);
+                }
+                
+                // Ocasionalmente mostrar caracteres ASCII
+                if (random() > 0.98) {
+                    fill(120, 100, 60, 80);
+                    textFont('monospace');
+                    textSize(8);
+                    text(String.fromCharCode(33 + floor(random() * 93)), 
+                         random() * width, y + 5);
+                    noFill();
+                }
+            }
+            
+            // Efecto de "ruido" de terminal viejo
+            if (frameCount % 30 === 0) {
+                for (let i = 0; i < 5; i++) {
+                    stroke(120, 100, 80, 60);
+                    point(random() * width, random() * height);
+                }
+            }
+        }
+        
+        function mouseMoved() {
+            if (mouseIsPressed) {
+                drawAndPlaySound();
+            }
+        }
+        
+        function mouseDragged() {
+            drawAndPlaySound();
+        }
+        
+        function mousePressed() {
+            if (audioStarted) {
+                isDrawing = true;
+                drawAndPlaySound();
+                
+                // Crear partículas en el click
+                for (let i = 0; i < 10; i++) {
+                    particles.push(new Particle(mouseX, mouseY));
+                }
+            }
+        }
+        
+        function mouseReleased() {
+            isDrawing = false;
+        }
+        
+        function drawAndPlaySound() {
+            if (!audioStarted) return;
+            
+            let speed = dist(mouseX, mouseY, lastMouseX, lastMouseY);
+            let normalizedY = map(mouseY, 0, height, 1, 0);
+            let noteIndex = floor(map(mouseY, 0, height, 0, currentScale.length));
+            noteIndex = constrain(noteIndex, 0, currentScale.length - 1);
+            
+            let frequency = currentScale[noteIndex];
+            let volume = map(speed, 0, 50, 0.2, 0.6); // Volumen más controlado
+            
+            // Establecer nota base si es la primera
+            if (baseNote === 0) {
+                baseNote = frequency;
+            }
+            
+            // Crear trail visual con más intensidad
+            trails.push({
+                x: mouseX,
+                y: mouseY,
+                prevX: lastMouseX,
+                prevY: lastMouseY,
+                hue: 0, // Rojo
+                life: 255,
+                speed: speed,
+                synthType: floor(map(mouseX, 0, width, 0, 3))
+            });
+            
+            // Reproducir sonido de forma más armoniosa
+            if (frameCount % 4 === 0) { // Menos frecuente para evitar saturación
+                let synthChoice = floor(map(mouseX, 0, width, 0, 3));
+                
+                // Añadir armonías automáticamente
+                let harmony1 = frequency * 1.25; // Quinta perfecta
+                let harmony2 = frequency * 1.5;  // Octava + quinta
+                
+                switch(synthChoice) {
+                    case 0:
+                        // Lead con armonías
+                        synth.triggerAttackRelease(frequency, "4n", undefined, volume);
+                        
+                        // Añadir armonías sutiles
+                        setTimeout(() => {
+                            synth.triggerAttackRelease(harmony1, "8n", undefined, volume * 0.3);
+                        }, 100);
+                        break;
+                        
+                    case 1:
+                        // Pads armónicos - tocar acordes
+                        let chord = [frequency, frequency * 1.25, frequency * 1.5]; // Acorde mayor
+                        synth2.triggerAttackRelease(chord, "2n", undefined, volume * 0.4);
+                        break;
+                        
+                    case 2:
+                        // Bass más melódico
+                        let bassNote = frequency * 0.5; // Una octava abajo
+                        synth3.triggerAttackRelease(bassNote, "4n", undefined, volume * 0.6);
+                        
+                        // Añadir walking bass
+                        if (random() < 0.4) {
+                            setTimeout(() => {
+                                synth3.triggerAttackRelease(bassNote * 1.125, "8n", undefined, volume * 0.4);
+                            }, 200);
+                        }
+                        break;
+                }
+                
+                // Armonías ambientales ocasionales
+                if (speed > 20 && random() < 0.2) {
+                    setTimeout(() => {
+                        synth2.triggerAttackRelease([baseNote, baseNote * 1.25, baseNote * 1.5], "1n", undefined, 0.1);
+                    }, 300);
+                }
+            }
+            
+            lastMouseX = mouseX;
+            lastMouseY = mouseY;
+        }
+        
+        function updateTrails() {
+            for (let i = trails.length - 1; i >= 0; i--) {
+                trails[i].life -= 3;
+                if (trails[i].life <= 0) {
+                    trails.splice(i, 1);
+                }
+            }
+        }
+        
+        function drawTrails() {
+            for (let trail of trails) {
+                // Efecto pixelado/blocky para simular baja resolución
+                let thickness = floor(map(trail.speed, 0, 50, 2, 6));
+                
+                strokeWeight(thickness);
+                stroke(0, 100, 90, map(trail.life, 0, 255, 0, 100)); // Rojo terminal
+                
+                // Dibujar línea principal
+                line(trail.prevX, trail.prevY, trail.x, trail.y);
+                
+                // Efecto de "ghosting" retro
+                strokeWeight(thickness + 2);
+                stroke(0, 80, 60, map(trail.life, 0, 255, 0, 20));
+                line(trail.prevX + 1, trail.prevY + 1, trail.x + 1, trail.y + 1);
+                
+                // Efecto de parpadeo ocasional
+                if (random() > 0.95) {
+                    strokeWeight(thickness);
+                    stroke(0, 100, 100, map(trail.life, 0, 255, 0, 80));
+                    line(trail.prevX, trail.prevY, trail.x, trail.y);
+                }
+            }
+        }
+        
+        function updateParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].update();
+                if (particles[i].isDead()) {
+                    particles.splice(i, 1);
+                }
+            }
+        }
+        
+        function drawParticles() {
+            for (let particle of particles) {
+                particle.draw();
+            }
+        }
+        
+        function drawRetroEffects() {
+            // Efectos de terminal retro
+            
+            // "Memoria" - barras ocasionales que parpadean
+            if (frameCount % 120 === 0) {
+                for (let i = 0; i < 3; i++) {
+                    let x = random() * width;
+                    stroke(120, 100, 70, 40);
+                    strokeWeight(1);
+                    line(x, 0, x, height);
+                }
+            }
+            
+            // Texto de estado ocasional (simulando procesos)
+            if (frameCount % 180 === 0) {
+                fill(120, 100, 60, 80);
+                textFont('monospace');
+                textSize(10);
+                let processes = [
+                    'PROC_SYNTH.EXE', 
+                    'AUDIO_BUF: OK', 
+                    'MEM: 64KB FREE',
+                    'CPU: 98% IDLE',
+                    'MIDI_IN: ACTIVE'
+                ];
+                text(random(processes), 20, height - 60);
+                noFill();
+            }
+            
+            // Líneas de escaneo ocasionales
+            if (random() > 0.98) {
+                stroke(120, 50, 80, 30);
+                strokeWeight(1);
+                let scanY = random() * height;
+                line(0, scanY, width, scanY);
+            }
+            
+            // "Pixeles muertos" ocasionales
+            if (random() > 0.995) {
+                stroke(0, 0, 0);
+                strokeWeight(2);
+                point(random() * width, random() * height);
+            }
+        }
+        
+        class Particle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.vx = random(-5, 5);
+                this.vy = random(-5, 5);
+                this.life = 255;
+                this.hue = 0; // Rojo para las partículas también
+                this.size = random(3, 8);
+            }
+            
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vx *= 0.98;
+                this.vy *= 0.98;
+                this.life -= 4;
+                this.size *= 0.99;
+            }
+            
+            draw() {
+                push();
+                translate(this.x, this.y);
+                
+                // Efecto pixelado para las partículas
+                let pixelSize = floor(this.size);
+                
+                // Particle glow más cuadrado
+                fill(0, 80, 70, map(this.life, 0, 255, 0, 40));
+                noStroke();
+                rect(-pixelSize, -pixelSize, pixelSize * 2, pixelSize * 2);
+                
+                // Particle core cuadrado
+                fill(0, 100, 100, map(this.life, 0, 255, 0, 100));
+                rect(-pixelSize/2, -pixelSize/2, pixelSize, pixelSize);
+                
+                // Ocasionalmente parpadea
+                if (random() > 0.9) {
+                    fill(120, 100, 100, map(this.life, 0, 255, 0, 100));
+                    rect(-pixelSize/2, -pixelSize/2, pixelSize, pixelSize);
+                }
+                
+                pop();
+            }
+            
+            isDead() {
+                return this.life <= 0;
+            }
+        }
+        
+        function windowResized() {
+            resizeCanvas(windowWidth, windowHeight);
+        }
+        
+        function keyPressed() {
+            if (key === 'c' || key === 'C') {
+                trails = [];
+                particles = [];
+            }
+        }
+    </script>
+</body>
+</html>
